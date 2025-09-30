@@ -9,3 +9,6 @@ requests>=2.31.0
 
 # QR processing
 pyzbar>=0.1.9
+
+# DataMatrix processing
+pylibdmtx>=0.1.10

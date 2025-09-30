@@ -61,7 +61,8 @@ def decode_qr(image):
     logger.info(f"🔧 Aplicando {len(basic_techniques)} técnicas básicas...")
 
     for i, processed_img in enumerate(basic_techniques):
-        decoded_objects = decode(processed_img)
+        from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
+        decoded_objects = decode_datamatrix_lib(processed_img)
         if decoded_objects:
             result = decoded_objects[0].data.decode('utf-8')
             logger.info(f"✅ QR detectado con técnica básica #{i}: '{result}'")
@@ -167,6 +168,126 @@ def decode_qr_ultra_advanced(image):
 
         return None
     except Exception:
+        return None
+
+
+def decode_datamatrix(image):
+    """Intenta decodificar DataMatrix con múltiples técnicas, incluyendo casos ultra-difíciles"""
+    logger.info("🔍 Iniciando decodificación DataMatrix con técnicas básicas...")
+
+    # Primero intentar técnicas básicas
+    basic_techniques = preprocess_image(image)
+    logger.info(f"🔧 Aplicando {len(basic_techniques)} técnicas básicas para DataMatrix...")
+
+    for i, processed_img in enumerate(basic_techniques):
+        from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
+        decoded_objects = decode_datamatrix_lib(processed_img)
+        if decoded_objects:
+            result = decoded_objects[0].data.decode('utf-8')
+            logger.info(f"✅ DataMatrix detectado con técnica básica #{i}: '{result}'")
+            return result
+
+    logger.info("⚡ Técnicas básicas fallaron, aplicando técnicas ultra-avanzadas para DataMatrix...")
+    # Si falla, usar técnicas ultra-avanzadas
+    result = decode_datamatrix_ultra_advanced(image)
+    if result:
+        logger.info(f"🚀 DataMatrix detectado con técnicas ultra-avanzadas: '{result}'")
+    else:
+        logger.warning("😔 Todas las técnicas fallaron - DataMatrix no detectado")
+    return result
+
+
+def decode_datamatrix_ultra_advanced(image):
+    """Técnicas ultra-avanzadas para DataMatrix muy desenfocados - versión completa"""
+    try:
+        # Convertir a numpy array
+        img_array = np.array(image)
+        if len(img_array.shape) == 3:
+            img_gray = cv2.cvtColor(img_array, cv2.COLOR_RGB2GRAY)
+        else:
+            img_gray = img_array
+
+        # DataMatrix específico: múltiples escalas (más sensible al tamaño que QR)
+        for scale in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]:
+            if scale != 1.0:
+                h, w = img_gray.shape
+                new_h, new_w = int(h * scale), int(w * scale)
+                scaled = cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+            else:
+                scaled = img_gray.copy()
+
+            # DataMatrix: rotaciones más precisas (son más sensibles)
+            for angle in [0, 0.5, -0.5, 1, -1, 2, -2, 90, 180, 270]:
+                if angle != 0:
+                    center = (scaled.shape[1]//2, scaled.shape[0]//2)
+                    matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+                    rotated = cv2.warpAffine(scaled, matrix, (scaled.shape[1], scaled.shape[0]))
+                else:
+                    rotated = scaled.copy()
+
+                # Técnicas específicas para DataMatrix
+                techniques = []
+
+                # Original
+                techniques.append(rotated)
+
+                # DataMatrix responde bien a threshold adaptativo
+                adaptive_thresh = cv2.adaptiveThreshold(
+                    rotated, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+                techniques.append(adaptive_thresh)
+                
+                # Otsu threshold (muy efectivo para DataMatrix)
+                _, otsu_thresh = cv2.threshold(rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                techniques.append(otsu_thresh)
+
+                # Morphological closing (conecta líneas rotas)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
+                closing = cv2.morphologyEx(rotated, cv2.MORPH_CLOSE, kernel)
+                techniques.append(closing)
+                
+                # Opening (elimina ruido)
+                opening = cv2.morphologyEx(rotated, cv2.MORPH_OPEN, kernel)
+                techniques.append(opening)
+
+                # Bilateral filter (preserva estructuras)
+                bilateral = cv2.bilateralFilter(rotated, 9, 75, 75)
+                techniques.append(bilateral)
+
+                # Sharpening específico para patrones geométricos
+                kernel_sharp = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+                sharp = cv2.filter2D(rotated, -1, kernel_sharp)
+                techniques.append(np.clip(sharp, 0, 255).astype(np.uint8))
+
+                # CLAHE moderado (DataMatrix es sensible a over-enhancement)
+                clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+                clahe_img = clahe.apply(rotated)
+                techniques.append(clahe_img)
+
+                # Gaussian blur + unsharp mask (suave para DataMatrix)
+                blurred = cv2.GaussianBlur(rotated, (3, 3), 0)
+                unsharp = cv2.addWeighted(rotated, 1.5, blurred, -0.5, 0)
+                techniques.append(np.clip(unsharp, 0, 255).astype(np.uint8))
+
+                # Erosion + Dilation (redefine bordes)
+                kernel_morph = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+                eroded = cv2.erode(rotated, kernel_morph, iterations=1)
+                dilated = cv2.dilate(eroded, kernel_morph, iterations=1)
+                techniques.append(dilated)
+
+                # Probar cada técnica con pylibdmtx
+                for processed in techniques:
+                    try:
+                        pil_img = Image.fromarray(processed)
+                        from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
+                        decoded_objects = decode_datamatrix_lib(pil_img)
+                        if decoded_objects:
+                            return decoded_objects[0].data.decode('utf-8')
+                    except:
+                        continue
+
+        return None
+    except Exception as e:
+        logger.error(f"❌ Error en decode_datamatrix_ultra_advanced: {str(e)}")
         return None
 
 
@@ -312,6 +433,143 @@ def scan_qr_from_url():
         logger.error(f"💥 [/scan-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+# ======================================
+# 🔲 DATAMATRIX ENDPOINTS
+# ======================================
+
+@app.route('/scan-datamatrix', methods=['POST'])
+def scan_datamatrix():
+    """Endpoint principal para escanear DataMatrix"""
+    client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+    logger.info(f"📥 [/scan-datamatrix] Nueva petición desde {client_ip}")
+
+    if 'file' not in request.files:
+        logger.warning(f"❌ [/scan-datamatrix] {client_ip} - No se encontró archivo en la petición")
+        return jsonify({"error": "No se encontró archivo"}), 400
+
+    file = request.files['file']
+    filename = file.filename or 'sin_nombre'
+
+    if file.filename == '':
+        logger.warning(f"❌ [/scan-datamatrix] {client_ip} - Archivo vacío")
+        return jsonify({"error": "Archivo vacío"}), 400
+
+    logger.info(f"📸 [/scan-datamatrix] {client_ip} - Procesando archivo: {filename}")
+
+    try:
+        img = Image.open(file.stream)
+        logger.info(f"🖼️  [/scan-datamatrix] {client_ip} - Imagen cargada: {img.size} píxeles, modo: {img.mode}")
+
+        start_time = datetime.now()
+        datamatrix_text = decode_datamatrix(img)
+        processing_time = (datetime.now() - start_time).total_seconds()
+
+        if datamatrix_text:
+            logger.info(f"✅ [/scan-datamatrix] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            return jsonify({"text": datamatrix_text})
+        else:
+            logger.warning(f"❌ [/scan-datamatrix] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            return jsonify({"error": "No se pudo detectar código DataMatrix"}), 404
+
+    except Exception as e:
+        logger.error(f"💥 [/scan-datamatrix] {client_ip} - Error procesando {filename}: {str(e)}")
+        return jsonify({"error": f"Error: {str(e)}"}), 500
+
+
+@app.route('/scan-datamatrix-base64', methods=['POST'])
+def scan_datamatrix_base64():
+    """Endpoint para escanear DataMatrix desde base64"""
+    client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+    logger.info(f"📥 [/scan-datamatrix-base64] Nueva petición desde {client_ip}")
+
+    try:
+        json_data = request.get_json()
+        if not json_data or 'image' not in json_data:
+            logger.warning(f"❌ [/scan-datamatrix-base64] {client_ip} - Falta campo 'image' en JSON")
+            return jsonify({"error": "Falta el campo 'image' con datos base64"}), 400
+
+        base64_string = json_data['image']
+        base64_length = len(base64_string)
+        logger.info(f"📊 [/scan-datamatrix-base64] {client_ip} - Base64 recibido: {base64_length} caracteres")
+
+        # Remover prefijo data:image si existe
+        if base64_string.startswith('data:image'):
+            base64_string = base64_string.split(',')[1]
+            logger.info(f"🔧 [/scan-datamatrix-base64] {client_ip} - Removido prefijo data:image")
+
+        # Decodificar base64
+        image_data = base64.b64decode(base64_string)
+        logger.info(f"🔓 [/scan-datamatrix-base64] {client_ip} - Base64 decodificado: {len(image_data)} bytes")
+
+        # Crear imagen desde bytes
+        img = Image.open(io.BytesIO(image_data))
+        logger.info(f"🖼️  [/scan-datamatrix-base64] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
+
+        # Procesar DataMatrix
+        start_time = datetime.now()
+        datamatrix_text = decode_datamatrix(img)
+        processing_time = (datetime.now() - start_time).total_seconds()
+
+        if datamatrix_text:
+            logger.info(f"✅ [/scan-datamatrix-base64] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            return jsonify({"text": datamatrix_text})
+        else:
+            logger.warning(f"❌ [/scan-datamatrix-base64] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            return jsonify({"error": "No se encontró código DataMatrix"}), 404
+
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds() if 'start_time' in locals() else 0
+        logger.error(f"💥 [/scan-datamatrix-base64] {client_ip} - Error procesando en {processing_time:.2f}s: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/scan-datamatrix-url', methods=['POST'])
+def scan_datamatrix_url():
+    """Endpoint para escanear DataMatrix desde URL"""
+    client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
+    start_time = datetime.now()
+    logger.info(f"📥 [/scan-datamatrix-url] Nueva petición desde {client_ip}")
+    
+    try:
+        data = request.get_json()
+        if not data or 'url' not in data:
+            logger.warning(f"❌ [/scan-datamatrix-url] {client_ip} - Falta campo 'url' en JSON")
+            return jsonify({'error': 'Falta el campo "url" con la URL de la imagen'}), 400
+        
+        image_url = data['url']
+        logger.info(f"🔗 [/scan-datamatrix-url] {client_ip} - Descargando desde: {image_url}")
+        
+        # Descargar imagen
+        response = requests.get(image_url, timeout=30)
+        response.raise_for_status()
+        logger.info(f"📥 [/scan-datamatrix-url] {client_ip} - Imagen descargada: {len(response.content)} bytes")
+        
+        # Convertir a imagen PIL desde bytes
+        img = Image.open(io.BytesIO(response.content))
+        logger.info(f"🖼️  [/scan-datamatrix-url] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
+        
+        # Procesar DataMatrix
+        datamatrix_text = decode_datamatrix(img)
+        processing_time = (datetime.now() - start_time).total_seconds()
+        
+        if datamatrix_text:
+            logger.info(f"✅ [/scan-datamatrix-url] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            return jsonify({'text': datamatrix_text})
+        else:
+            logger.warning(f"❌ [/scan-datamatrix-url] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            return jsonify({'error': 'No se encontró código DataMatrix'}), 404
+            
+    except requests.exceptions.RequestException as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"💥 [/scan-datamatrix-url] {client_ip} - Error descargando imagen en {processing_time:.2f}s: {str(e)}")
+        return jsonify({'error': f'Error descargando imagen: {str(e)}'}), 500
+    except Exception as e:
+        processing_time = (datetime.now() - start_time).total_seconds()
+        logger.error(f"💥 [/scan-datamatrix-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/health', methods=['GET'])
 def health():
     """Health check"""
@@ -325,8 +583,14 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     logger.info(f"🚀 Iniciando QR Scanner Service en puerto {port}")
     logger.info(f"📋 Endpoints disponibles:")
+    logger.info(f"   🔲 QR CODES:")
     logger.info(f"   • POST /scan - Multipart form-data")
     logger.info(f"   • POST /scan-base64 - JSON base64")
     logger.info(f"   • POST /scan-url - JSON con URL de imagen")
+    logger.info(f"   🔲 DATAMATRIX:")
+    logger.info(f"   • POST /scan-datamatrix - Multipart form-data")
+    logger.info(f"   • POST /scan-datamatrix-base64 - JSON base64")
+    logger.info(f"   • POST /scan-datamatrix-url - JSON con URL de imagen")
+    logger.info(f"   💚 HEALTH:")
     logger.info(f"   • GET /health - Health check")
     app.run(host='0.0.0.0', port=port, debug=False)

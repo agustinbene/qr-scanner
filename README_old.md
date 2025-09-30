@@ -1,36 +1,79 @@
-# 📱 Advanced Code Scanner Service
+# 📱 QR Scanner Service
 
-Servicio web avanzado para decodificar códigos **QR** y **DataMatrix**, especialmente optimizado para códigos desenfocados, de baja calidad o problemáticos como los que se encuentran en capturas de WhatsApp.
+Servicio web avanzado para decodificar códigos QR, especialment## 🧬 Tecnologías
+
+- **Flask**: Framework web ligero y eficiente
+- **OpenCV**: Procesamiento avanzado de imágenes y visión computacional
+- **pyzbar**: Librería especializada en decodificación de códigos de barras y QR
+- **PIL/Pillow**: Manipulación y transformación de imágenes
+- **NumPy**: Computación numérica optimizada
+- **Docker**: Containerización multiplataforma
+- **Python 3.12**: Runtime optimizado
+
+## 🔬 Procesamiento Ultra-Avanzado
+
+El servicio implementa un pipeline de 25+ técnicas especializadas para QR problemáticos:
+
+### Técnicas Básicas (7 métodos)
+- Escalado inteligente (2x, 4x)
+- Conversión a escala de grises optimizada
+- Threshold adaptativo múltiple
+- Bilateral filtering para reducción de ruido
+- Rotaciones automáticas (-5°, 5°)
+
+### Técnicas Ultra-Avanzadas (20+ métodos)
+- **CLAHE**: Ecualización de histograma por sectores
+- **Unsharp Masking**: Realce de bordes selectivo
+- **Morfología Avanzada**: Opening, closing, gradient
+- **Sharpening Extremo**: Kernels especializados
+- **Threshold Dinámico**: Múltiples algoritmos adaptativos
+- **Gaussian Blur + Sharpening**: Reducción de ruido con realce
+- **Detección de Contornos**: Análisis geométrico avanzado
+- **Corrección Gamma**: Ajuste automático de luminancia
+
+### Casos de Uso Optimizados
+- ✅ Capturas de pantalla de WhatsApp
+- ✅ Fotos borrosas o desenfocadas  
+- ✅ QR con bajo contraste
+- ✅ Códigos parcialmente dañados
+- ✅ Imágenes con ruido o compresióncódigos desenfocados o de baja calidad como los que se encuentran en capturas de WhatsApp.
 
 ## 🚀 Características
 
-- **Dual Technology**: Soporte completo para QR Codes y DataMatrix
-- **Procesamiento Ultra-Avanzado**: 25+ técnicas especializadas para códigos problemáticos  
-- **Multi-API**: Soporte completo para multipart/form-data, base64 JSON y URLs
+- **Procesamiento Ultra-Avanzado**: 25+ técnicas especializadas para QR problemáticos
+- **Dual API**: Soporte completo para multipart/form-data y base64 JSON
 - **Docker Ready**: Containerizado con todas las dependencias incluidas
-- **n8n Compatible**: Endpoints optimizados para automatización y workflows
+- **n8n Compatible**: Endpoint optimizado para automatización y workflows
 - **Logging Detallado**: Sistema de logs para debugging y monitoreo
 - **Alta Compatibilidad**: Funciona con todos los formatos de imagen comunes
-- **Testing Local**: Scripts de prueba independientes para cada tipo de código
 
-## 📁 Estructura del Proyecto
+## 📁 Estructura del Proyectoner Service
+
+Servicio web Docker para decodificar códigos QR, incluyendo códigos desenfocados o de baja calidad.
+
+## 🚀 Características
+
+- **Procesamiento Avanzado**: Técnicas ultra-avanzadas para QR desenfocados
+- **Dual API**: Soporte para multipart/form-data y base64 JSON
+- **Docker Ready**: Containerizado para fácil despliegue
+- **n8n Compatible**: Endpoint optimizado para automatización
+
+## � Estructura del Proyecto
 
 ```
 qr-scanner/
-├── app.py                    # 🐍 Servicio Flask con algoritmos avanzados (QR + DataMatrix)
-├── test_qr.py               # 🧪 Script de prueba local para QR codes
-├── test_datamatrix.py       # 🔲 Script de prueba local para DataMatrix
+├── app.py                    # 🐍 Servicio Flask principal con algoritmos avanzados
+├── test_qr.py               # 🧪 Script de prueba local
 ├── Dockerfile               # 🐳 Imagen Docker optimizada  
 ├── docker-compose.yml       # 🐳 Orquestación Docker para desarrollo
 ├── docker-compose.prod.yml  # 🚀 Configuración para producción
-├── requirements.txt         # 📦 Dependencias Python (QR + DataMatrix)
+├── requirements.txt         # 📦 Dependencias Python
 ├── start.sh                # ▶️ Script para iniciar servicio
 ├── stop.sh                 # ⏹️ Script para detener servicio
 ├── logs.sh                 # 📋 Script para ver logs en tiempo real
 ├── .gitignore              # 🚫 Archivos ignorados por Git
 ├── qr.jpg                  # 📱 Imagen QR de ejemplo clara
 ├── wsp.jpeg                # 📱 Imagen QR desenfocada de WhatsApp
-├── V16-datamatrix.png      # 🔲 Imagen DataMatrix de ejemplo
 └── README.md               # 📖 Esta documentación
 ```
 
@@ -101,8 +144,7 @@ curl http://localhost:5000/health
 
 ## 📱 Integración con n8n
 
-**QR Codes URL**: `http://tu-servidor:5000/scan-base64`
-**DataMatrix URL**: `http://tu-servidor:5000/scan-datamatrix-base64`
+**URL**: `http://tu-servidor:5000/scan-base64`
 **Method**: `POST`
 **Content-Type**: `application/json`
 **Body**:
@@ -114,60 +156,29 @@ curl http://localhost:5000/health
 
 ## 🧬 Tecnologías
 
-- **Flask**: Framework web ligero y eficiente
-- **OpenCV**: Procesamiento avanzado de imágenes y visión computacional
-- **pyzbar**: Librería especializada en decodificación de códigos QR
-- **pylibdmtx**: Librería especializada en decodificación de códigos DataMatrix
-- **PIL/Pillow**: Manipulación y transformación de imágenes
-- **NumPy**: Computación numérica optimizada
-- **Docker**: Containerización multiplataforma
-- **Python 3.12**: Runtime optimizado
+- **Flask**: Framework web
+- **OpenCV**: Procesamiento avanzado de imágenes
+- **pyzbar**: Decodificación QR
+- **PIL/Pillow**: Manipulación de imágenes
+- **NumPy**: Computación numérica
+- **Docker**: Containerización
 
-## 🔬 Procesamiento Ultra-Avanzado
+## � Procesamiento Avanzado
 
-### Para QR Codes
-El servicio implementa un pipeline de 25+ técnicas especializadas:
-
-**Técnicas Básicas (7 métodos)**
-- Escalado inteligente (2x, 4x)
-- Conversión a escala de grises optimizada
-- Threshold adaptativo múltiple
-- Bilateral filtering para reducción de ruido
-- Rotaciones automáticas (-5°, 5°)
-
-**Técnicas Ultra-Avanzadas (20+ métodos)**
-- **CLAHE**: Ecualización de histograma por sectores
-- **Unsharp Masking**: Realce de bordes selectivo
-- **Morfología Avanzada**: Opening, closing, gradient
-- **Sharpening Extremo**: Kernels especializados
-- **Threshold Dinámico**: Múltiples algoritmos adaptativos
-
-### Para DataMatrix
-Técnicas especializadas para códigos DataMatrix:
-
-**Técnicas Optimizadas**
-- **Threshold Adaptativo**: Algoritmo Gaussian y Otsu
-- **Operaciones Morfológicas**: Closing y Opening específicos
-- **Escalado Preciso**: Múltiples escalas (0.5x - 3x)
-- **Rotaciones Exactas**: Incluye 90°, 180°, 270°
-- **Bilateral Filter**: Preservación de estructuras geométricas
-- **Sharpening Geométrico**: Kernels optimizados para patrones
-
-### Casos de Uso Optimizados
-- ✅ Capturas de pantalla de WhatsApp (QR + DataMatrix)
-- ✅ Fotos borrosas o desenfocadas  
-- ✅ Códigos con bajo contraste
-- ✅ Códigos parcialmente dañados
-- ✅ Imágenes con ruido o compresión
-- ✅ Códigos rotados o con perspectiva
-- ✅ DataMatrix pequeños o de alta densidad
+El servicio incluye técnicas ultra-avanzadas para QR problemáticos:
+- Múltiples escalas y rotaciones
+- Unsharp masking y bilateral filtering
+- CLAHE (equalización de histograma)
+- Threshold adaptativo
+- Operaciones morfológicas
+- Sharpening extremo
 
 ## 📋 Respuestas de la API
 
 **Éxito (200)**:
 ```json
 {
-  "text": "Contenido del código decodificado"
+  "text": "Contenido del QR decodificado"
 }
 ```
 
@@ -186,7 +197,6 @@ Si prefieres ejecutar sin Docker:
 # 1. Instalar dependencias del sistema (Ubuntu/Debian)
 sudo apt-get update && sudo apt-get install -y \
     libzbar0 libzbar-dev \
-    libdmtx0t64 libdmtx-dev \
     libglib2.0-0 libsm6 libxext6 libxrender-dev libgomp1
 
 # 2. Crear entorno virtual
@@ -202,38 +212,25 @@ python app.py
 
 ## 🧪 Pruebas Locales
 
-### Para QR Codes
+Para probar el escaneo QR localmente sin API:
+
 ```bash
 # Activar entorno virtual
 source .venv/bin/activate
 
-# Probar con imagen QR
-python test_qr.py imagen_qr.jpg
+# Probar con imagen
+python test_qr.py imagen.jpg
 
 # Ejemplo con imagen de prueba
 python test_qr.py wsp.jpeg
-```
-
-### Para DataMatrix  
-```bash
-# Activar entorno virtual
-source .venv/bin/activate
-
-# Probar con imagen DataMatrix
-python test_datamatrix.py imagen_datamatrix.png
-
-# Ejemplo con imagen de prueba
-python test_datamatrix.py V16-datamatrix.png
 ```
 
 ## 📊 Rendimiento
 
 - **QR Claros**: ~0.1-0.5 segundos
 - **QR Problemáticos**: ~15-30 segundos  
-- **DataMatrix Claros**: ~0.1 segundos
-- **DataMatrix Problemáticos**: ~10-25 segundos
 - **Tasa de Éxito**: >95% en imágenes de WhatsApp
-- **Memoria**: ~250MB en Docker
+- **Memoria**: ~200MB en Docker
 - **CPU**: Optimizado para single-core
 
 ## 🔧 Configuración Avanzada
@@ -271,7 +268,6 @@ services:
 - **Thread Safety**: Diseñado para múltiples requests concurrentes
 - **Error Handling**: Manejo robusto de errores con logging detallado
 - **Cross-Platform**: Compatible con Linux, Windows, macOS vía Docker
-- **DataMatrix Sensitivity**: Los códigos DataMatrix son más sensibles al tamaño y rotación que los QR
 
 ## 🤝 Contribución
 
@@ -289,15 +285,8 @@ Este proyecto está bajo la Licencia MIT. Ver `LICENSE` para más detalles.
 
 ## 🎯 Roadmap
 
-- [x] ✅ Soporte completo para QR Codes
-- [x] ✅ Soporte completo para DataMatrix
-- [x] ✅ Técnicas avanzadas de procesamiento de imagen
-- [x] ✅ API REST completa con múltiples endpoints
-- [x] ✅ Scripts de testing local
-- [x] ✅ Containerización Docker
-- [ ] 🔄 API key authentication
-- [ ] 🔄 Batch processing endpoint
-- [ ] 🔄 Webhook notifications
-- [ ] 🔄 QR/DataMatrix generation endpoints
-- [ ] 🔄 Performance metrics dashboard
-- [ ] 🔄 Support for other barcode types (Code128, Code39, etc.)
+- [ ] API key authentication
+- [ ] Batch processing endpoint
+- [ ] Webhook notifications
+- [ ] QR generation endpoint
+- [ ] Performance metrics dashboard
