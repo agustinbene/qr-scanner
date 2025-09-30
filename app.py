@@ -174,14 +174,15 @@ def decode_qr_ultra_advanced(image):
 def decode_datamatrix(image):
     """Intenta decodificar DataMatrix con múltiples técnicas, incluyendo casos ultra-difíciles"""
     logger.info("🔍 Iniciando decodificación DataMatrix con técnicas básicas...")
-    
+
     # Optimización agresiva para imágenes grandes: redimensionar si es necesario
     max_dimension = 800  # Límite más agresivo para velocidad
     if max(image.size) > max_dimension:
         ratio = max_dimension / max(image.size)
         new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
         image = image.resize(new_size, Image.LANCZOS)
-        logger.info(f"📏 Imagen redimensionada a {new_size} para optimización (agresiva)")
+        logger.info(
+            f"📏 Imagen redimensionada a {new_size} para optimización (agresiva)")
 
     # Primero intentar técnicas básicas optimizadas para DataMatrix
     basic_techniques = preprocess_image_datamatrix(image)
@@ -192,7 +193,8 @@ def decode_datamatrix(image):
         try:
             from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
             # Añadir timeout para evitar colgarse
-            decoded_objects = decode_datamatrix_lib(processed_img, timeout=3000)  # 3 segundos max
+            decoded_objects = decode_datamatrix_lib(
+                processed_img, timeout=3000)  # 3 segundos max
             if decoded_objects:
                 result = decoded_objects[0].data.decode('utf-8')
                 logger.info(
@@ -230,8 +232,10 @@ def decode_datamatrix_ultra_advanced(image):
         if max(h, w) > 600:
             ratio = 600 / max(h, w)
             new_h, new_w = int(h * ratio), int(w * ratio)
-            img_gray = cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            logger.info(f"📐 Imagen redimensionada para técnicas avanzadas: {new_w}x{new_h}")
+            img_gray = cv2.resize(img_gray, (new_w, new_h),
+                                  interpolation=cv2.INTER_LANCZOS4)
+            logger.info(
+                f"📐 Imagen redimensionada para técnicas avanzadas: {new_w}x{new_h}")
 
         # DataMatrix específico: solo escalas más efectivas (menos iteraciones)
         for scale in [1.0, 0.5, 2.0]:
@@ -243,8 +247,8 @@ def decode_datamatrix_ultra_advanced(image):
             else:
                 scaled = img_gray.copy()
 
-            # DataMatrix: solo rotaciones principales (máxima velocidad)
-            for angle in [0, 90, 180, 270]:
+            # DataMatrix: rotaciones ordenadas por probabilidad de éxito
+            for angle in [0, 270, 90, 180]:  # 270° fue exitoso en dm2.jpg
                 if angle != 0:
                     center = (scaled.shape[1]//2, scaled.shape[0]//2)
                     matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
@@ -253,32 +257,32 @@ def decode_datamatrix_ultra_advanced(image):
                 else:
                     rotated = scaled.copy()
 
-                # Técnicas específicas para DataMatrix
+                # Técnicas específicas para DataMatrix (ordenadas por efectividad)
                 techniques = []
 
-                # Original
-                techniques.append(rotated)
-
-                # DataMatrix responde bien a threshold adaptativo
+                # Otsu threshold PRIMERO (muy efectivo para DataMatrix)
+                _, otsu_thresh = cv2.threshold(
+                    rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                techniques.append(otsu_thresh)
+                
+                # Threshold adaptativo SEGUNDO
                 adaptive_thresh = cv2.adaptiveThreshold(
                     rotated, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
                 techniques.append(adaptive_thresh)
 
-                # Otsu threshold (muy efectivo para DataMatrix)
-                _, otsu_thresh = cv2.threshold(
-                    rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-                techniques.append(otsu_thresh)
-
-                # Morphological closing (conecta líneas rotas)
+                # Original TERCERO
+                techniques.append(rotated)
+                
+                # Morphological operations (ordenadas por efectividad)
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
                 closing = cv2.morphologyEx(rotated, cv2.MORPH_CLOSE, kernel)
                 techniques.append(closing)
-
+                
                 # Opening (elimina ruido)
                 opening = cv2.morphologyEx(rotated, cv2.MORPH_OPEN, kernel)
                 techniques.append(opening)
-
-                # Bilateral filter (preserva estructuras)
+                
+                # Bilateral filter (muy efectivo para desenfoque)
                 bilateral = cv2.bilateralFilter(rotated, 9, 75, 75)
                 techniques.append(bilateral)
 
@@ -305,14 +309,16 @@ def decode_datamatrix_ultra_advanced(image):
                 dilated = cv2.dilate(eroded, kernel_morph, iterations=1)
                 techniques.append(dilated)
 
-                # Probar cada técnica con pylibdmtx (con timeout)
-                for j, processed in enumerate(techniques):
+                # Probar cada técnica con pylibdmtx (timeout optimizado)
+                for j, processed in enumerate(techniques[:8]):  # Limitar a 8 técnicas más efectivas
                     try:
                         pil_img = Image.fromarray(processed)
                         from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
-                        decoded_objects = decode_datamatrix_lib(pil_img, timeout=2000)  # 2 segundos max
+                        decoded_objects = decode_datamatrix_lib(
+                            pil_img, timeout=1500)  # 1.5 segundos max
                         if decoded_objects:
-                            logger.info(f"🎯 DataMatrix encontrado con escala {scale}, ángulo {angle}, técnica {j}")
+                            logger.info(
+                                f"🎯 DataMatrix encontrado con escala {scale}, ángulo {angle}, técnica {j}")
                             return decoded_objects[0].data.decode('utf-8')
                     except Exception as e:
                         continue  # Continuar con la siguiente técnica
@@ -326,16 +332,16 @@ def decode_datamatrix_ultra_advanced(image):
 def preprocess_image_datamatrix(image):
     """Preprocesamiento específico y optimizado para DataMatrix (técnicas rápidas)"""
     processed_images = []
-    
+
     # Convertir a escala de grises si es necesario
     if image.mode != 'L':
         gray_image = image.convert('L')
     else:
         gray_image = image
-    
+
     # Solo las técnicas MÁS efectivas para DataMatrix (velocidad máxima)
     processed_images.append(gray_image)  # Original en grises
-    
+
     try:
         # Threshold adaptativo (muy efectivo para DataMatrix)
         import numpy as np
@@ -343,13 +349,14 @@ def preprocess_image_datamatrix(image):
         adaptive_thresh = cv2.adaptiveThreshold(
             gray_array, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
         processed_images.append(Image.fromarray(adaptive_thresh))
-        
+
         # Otsu threshold (súper efectivo)
-        _, otsu_thresh = cv2.threshold(gray_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, otsu_thresh = cv2.threshold(
+            gray_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         processed_images.append(Image.fromarray(otsu_thresh))
     except Exception as e:
         logger.debug(f"Error en preprocesamiento avanzado: {e}")
-    
+
     return processed_images
 
 
