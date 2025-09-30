@@ -174,26 +174,44 @@ def decode_qr_ultra_advanced(image):
 def decode_datamatrix(image):
     """Intenta decodificar DataMatrix con múltiples técnicas, incluyendo casos ultra-difíciles"""
     logger.info("🔍 Iniciando decodificación DataMatrix con técnicas básicas...")
+    
+    # Optimización agresiva para imágenes grandes: redimensionar si es necesario
+    max_dimension = 800  # Límite más agresivo para velocidad
+    if max(image.size) > max_dimension:
+        ratio = max_dimension / max(image.size)
+        new_size = (int(image.size[0] * ratio), int(image.size[1] * ratio))
+        image = image.resize(new_size, Image.LANCZOS)
+        logger.info(f"📏 Imagen redimensionada a {new_size} para optimización (agresiva)")
 
-    # Primero intentar técnicas básicas
-    basic_techniques = preprocess_image(image)
-    logger.info(f"🔧 Aplicando {len(basic_techniques)} técnicas básicas para DataMatrix...")
+    # Primero intentar técnicas básicas optimizadas para DataMatrix
+    basic_techniques = preprocess_image_datamatrix(image)
+    logger.info(
+        f"🔧 Aplicando {len(basic_techniques)} técnicas básicas optimizadas para DataMatrix...")
 
     for i, processed_img in enumerate(basic_techniques):
-        from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
-        decoded_objects = decode_datamatrix_lib(processed_img)
-        if decoded_objects:
-            result = decoded_objects[0].data.decode('utf-8')
-            logger.info(f"✅ DataMatrix detectado con técnica básica #{i}: '{result}'")
-            return result
+        try:
+            from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
+            # Añadir timeout para evitar colgarse
+            decoded_objects = decode_datamatrix_lib(processed_img, timeout=3000)  # 3 segundos max
+            if decoded_objects:
+                result = decoded_objects[0].data.decode('utf-8')
+                logger.info(
+                    f"✅ DataMatrix detectado con técnica básica #{i}: '{result}'")
+                return result
+        except Exception as e:
+            logger.debug(f"🔧 Técnica básica #{i} falló: {str(e)}")
+            continue
 
-    logger.info("⚡ Técnicas básicas fallaron, aplicando técnicas ultra-avanzadas para DataMatrix...")
+    logger.info(
+        "⚡ Técnicas básicas fallaron, aplicando técnicas ultra-avanzadas para DataMatrix...")
     # Si falla, usar técnicas ultra-avanzadas
     result = decode_datamatrix_ultra_advanced(image)
     if result:
-        logger.info(f"🚀 DataMatrix detectado con técnicas ultra-avanzadas: '{result}'")
+        logger.info(
+            f"🚀 DataMatrix detectado con técnicas ultra-avanzadas: '{result}'")
     else:
-        logger.warning("😔 Todas las técnicas fallaron - DataMatrix no detectado")
+        logger.warning(
+            "😔 Todas las técnicas fallaron - DataMatrix no detectado")
     return result
 
 
@@ -207,21 +225,31 @@ def decode_datamatrix_ultra_advanced(image):
         else:
             img_gray = img_array
 
-        # DataMatrix específico: múltiples escalas (más sensible al tamaño que QR)
-        for scale in [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]:
+        # Asegurar que la imagen sea pequeña para las técnicas avanzadas
+        h, w = img_gray.shape
+        if max(h, w) > 600:
+            ratio = 600 / max(h, w)
+            new_h, new_w = int(h * ratio), int(w * ratio)
+            img_gray = cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+            logger.info(f"📐 Imagen redimensionada para técnicas avanzadas: {new_w}x{new_h}")
+
+        # DataMatrix específico: solo escalas más efectivas (menos iteraciones)
+        for scale in [1.0, 0.5, 2.0]:
             if scale != 1.0:
                 h, w = img_gray.shape
                 new_h, new_w = int(h * scale), int(w * scale)
-                scaled = cv2.resize(img_gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+                scaled = cv2.resize(img_gray, (new_w, new_h),
+                                    interpolation=cv2.INTER_CUBIC)
             else:
                 scaled = img_gray.copy()
 
-            # DataMatrix: rotaciones más precisas (son más sensibles)
-            for angle in [0, 0.5, -0.5, 1, -1, 2, -2, 90, 180, 270]:
+            # DataMatrix: solo rotaciones principales (máxima velocidad)
+            for angle in [0, 90, 180, 270]:
                 if angle != 0:
                     center = (scaled.shape[1]//2, scaled.shape[0]//2)
                     matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
-                    rotated = cv2.warpAffine(scaled, matrix, (scaled.shape[1], scaled.shape[0]))
+                    rotated = cv2.warpAffine(
+                        scaled, matrix, (scaled.shape[1], scaled.shape[0]))
                 else:
                     rotated = scaled.copy()
 
@@ -235,16 +263,17 @@ def decode_datamatrix_ultra_advanced(image):
                 adaptive_thresh = cv2.adaptiveThreshold(
                     rotated, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
                 techniques.append(adaptive_thresh)
-                
+
                 # Otsu threshold (muy efectivo para DataMatrix)
-                _, otsu_thresh = cv2.threshold(rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                _, otsu_thresh = cv2.threshold(
+                    rotated, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
                 techniques.append(otsu_thresh)
 
                 # Morphological closing (conecta líneas rotas)
                 kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
                 closing = cv2.morphologyEx(rotated, cv2.MORPH_CLOSE, kernel)
                 techniques.append(closing)
-                
+
                 # Opening (elimina ruido)
                 opening = cv2.morphologyEx(rotated, cv2.MORPH_OPEN, kernel)
                 techniques.append(opening)
@@ -254,7 +283,8 @@ def decode_datamatrix_ultra_advanced(image):
                 techniques.append(bilateral)
 
                 # Sharpening específico para patrones geométricos
-                kernel_sharp = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
+                kernel_sharp = np.array(
+                    [[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
                 sharp = cv2.filter2D(rotated, -1, kernel_sharp)
                 techniques.append(np.clip(sharp, 0, 255).astype(np.uint8))
 
@@ -269,26 +299,58 @@ def decode_datamatrix_ultra_advanced(image):
                 techniques.append(np.clip(unsharp, 0, 255).astype(np.uint8))
 
                 # Erosion + Dilation (redefine bordes)
-                kernel_morph = cv2.getStructuringElement(cv2.MORPH_RECT, (1, 1))
+                kernel_morph = cv2.getStructuringElement(
+                    cv2.MORPH_RECT, (1, 1))
                 eroded = cv2.erode(rotated, kernel_morph, iterations=1)
                 dilated = cv2.dilate(eroded, kernel_morph, iterations=1)
                 techniques.append(dilated)
 
-                # Probar cada técnica con pylibdmtx
-                for processed in techniques:
+                # Probar cada técnica con pylibdmtx (con timeout)
+                for j, processed in enumerate(techniques):
                     try:
                         pil_img = Image.fromarray(processed)
                         from pylibdmtx.pylibdmtx import decode as decode_datamatrix_lib
-                        decoded_objects = decode_datamatrix_lib(pil_img)
+                        decoded_objects = decode_datamatrix_lib(pil_img, timeout=2000)  # 2 segundos max
                         if decoded_objects:
+                            logger.info(f"🎯 DataMatrix encontrado con escala {scale}, ángulo {angle}, técnica {j}")
                             return decoded_objects[0].data.decode('utf-8')
-                    except:
-                        continue
+                    except Exception as e:
+                        continue  # Continuar con la siguiente técnica
 
         return None
     except Exception as e:
         logger.error(f"❌ Error en decode_datamatrix_ultra_advanced: {str(e)}")
         return None
+
+
+def preprocess_image_datamatrix(image):
+    """Preprocesamiento específico y optimizado para DataMatrix (técnicas rápidas)"""
+    processed_images = []
+    
+    # Convertir a escala de grises si es necesario
+    if image.mode != 'L':
+        gray_image = image.convert('L')
+    else:
+        gray_image = image
+    
+    # Solo las técnicas MÁS efectivas para DataMatrix (velocidad máxima)
+    processed_images.append(gray_image)  # Original en grises
+    
+    try:
+        # Threshold adaptativo (muy efectivo para DataMatrix)
+        import numpy as np
+        gray_array = np.array(gray_image)
+        adaptive_thresh = cv2.adaptiveThreshold(
+            gray_array, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+        processed_images.append(Image.fromarray(adaptive_thresh))
+        
+        # Otsu threshold (súper efectivo)
+        _, otsu_thresh = cv2.threshold(gray_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        processed_images.append(Image.fromarray(otsu_thresh))
+    except Exception as e:
+        logger.debug(f"Error en preprocesamiento avanzado: {e}")
+    
+    return processed_images
 
 
 @app.route('/scan', methods=['POST'])
@@ -392,45 +454,53 @@ def scan_qr_from_url():
     """Endpoint para escanear QR desde URL de imagen"""
     client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
     logger.info(f"📥 [/scan-url] Nueva petición desde {client_ip}")
-    
+
     start_time = datetime.now()
-    
+
     try:
         data = request.get_json()
         if not data or 'url' not in data:
-            logger.warning(f"❌ [/scan-url] {client_ip} - Falta campo 'url' en JSON")
+            logger.warning(
+                f"❌ [/scan-url] {client_ip} - Falta campo 'url' en JSON")
             return jsonify({'error': 'Falta el campo "url" con la URL de la imagen'}), 400
-        
+
         image_url = data['url']
-        logger.info(f"🔗 [/scan-url] {client_ip} - Descargando desde: {image_url}")
-        
+        logger.info(
+            f"🔗 [/scan-url] {client_ip} - Descargando desde: {image_url}")
+
         # Descargar imagen
         response = requests.get(image_url, timeout=30)
         response.raise_for_status()
-        logger.info(f"📥 [/scan-url] {client_ip} - Imagen descargada: {len(response.content)} bytes")
-        
+        logger.info(
+            f"📥 [/scan-url] {client_ip} - Imagen descargada: {len(response.content)} bytes")
+
         # Convertir a imagen PIL desde bytes
         img = Image.open(io.BytesIO(response.content))
-        logger.info(f"�️  [/scan-url] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
-        
+        logger.info(
+            f"�️  [/scan-url] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
+
         # Procesar QR
         qr_text = decode_qr(img)
         processing_time = (datetime.now() - start_time).total_seconds()
-        
+
         if qr_text:
-            logger.info(f"✅ [/scan-url] {client_ip} - QR detectado en {processing_time:.2f}s: '{qr_text}'")
+            logger.info(
+                f"✅ [/scan-url] {client_ip} - QR detectado en {processing_time:.2f}s: '{qr_text}'")
             return jsonify({'text': qr_text})
         else:
-            logger.warning(f"❌ [/scan-url] {client_ip} - No se detectó QR después de {processing_time:.2f}s")
+            logger.warning(
+                f"❌ [/scan-url] {client_ip} - No se detectó QR después de {processing_time:.2f}s")
             return jsonify({'error': 'No se encontró código QR'}), 404
-            
+
     except requests.exceptions.RequestException as e:
         processing_time = (datetime.now() - start_time).total_seconds()
-        logger.error(f"💥 [/scan-url] {client_ip} - Error descargando imagen en {processing_time:.2f}s: {str(e)}")
+        logger.error(
+            f"💥 [/scan-url] {client_ip} - Error descargando imagen en {processing_time:.2f}s: {str(e)}")
         return jsonify({'error': f'Error descargando imagen: {str(e)}'}), 500
     except Exception as e:
         processing_time = (datetime.now() - start_time).total_seconds()
-        logger.error(f"💥 [/scan-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
+        logger.error(
+            f"💥 [/scan-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -445,7 +515,8 @@ def scan_datamatrix():
     logger.info(f"📥 [/scan-datamatrix] Nueva petición desde {client_ip}")
 
     if 'file' not in request.files:
-        logger.warning(f"❌ [/scan-datamatrix] {client_ip} - No se encontró archivo en la petición")
+        logger.warning(
+            f"❌ [/scan-datamatrix] {client_ip} - No se encontró archivo en la petición")
         return jsonify({"error": "No se encontró archivo"}), 400
 
     file = request.files['file']
@@ -455,25 +526,30 @@ def scan_datamatrix():
         logger.warning(f"❌ [/scan-datamatrix] {client_ip} - Archivo vacío")
         return jsonify({"error": "Archivo vacío"}), 400
 
-    logger.info(f"📸 [/scan-datamatrix] {client_ip} - Procesando archivo: {filename}")
+    logger.info(
+        f"📸 [/scan-datamatrix] {client_ip} - Procesando archivo: {filename}")
 
     try:
         img = Image.open(file.stream)
-        logger.info(f"🖼️  [/scan-datamatrix] {client_ip} - Imagen cargada: {img.size} píxeles, modo: {img.mode}")
+        logger.info(
+            f"🖼️  [/scan-datamatrix] {client_ip} - Imagen cargada: {img.size} píxeles, modo: {img.mode}")
 
         start_time = datetime.now()
         datamatrix_text = decode_datamatrix(img)
         processing_time = (datetime.now() - start_time).total_seconds()
 
         if datamatrix_text:
-            logger.info(f"✅ [/scan-datamatrix] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            logger.info(
+                f"✅ [/scan-datamatrix] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
             return jsonify({"text": datamatrix_text})
         else:
-            logger.warning(f"❌ [/scan-datamatrix] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            logger.warning(
+                f"❌ [/scan-datamatrix] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
             return jsonify({"error": "No se pudo detectar código DataMatrix"}), 404
 
     except Exception as e:
-        logger.error(f"💥 [/scan-datamatrix] {client_ip} - Error procesando {filename}: {str(e)}")
+        logger.error(
+            f"💥 [/scan-datamatrix] {client_ip} - Error procesando {filename}: {str(e)}")
         return jsonify({"error": f"Error: {str(e)}"}), 500
 
 
@@ -481,30 +557,36 @@ def scan_datamatrix():
 def scan_datamatrix_base64():
     """Endpoint para escanear DataMatrix desde base64"""
     client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
-    logger.info(f"📥 [/scan-datamatrix-base64] Nueva petición desde {client_ip}")
+    logger.info(
+        f"📥 [/scan-datamatrix-base64] Nueva petición desde {client_ip}")
 
     try:
         json_data = request.get_json()
         if not json_data or 'image' not in json_data:
-            logger.warning(f"❌ [/scan-datamatrix-base64] {client_ip} - Falta campo 'image' en JSON")
+            logger.warning(
+                f"❌ [/scan-datamatrix-base64] {client_ip} - Falta campo 'image' en JSON")
             return jsonify({"error": "Falta el campo 'image' con datos base64"}), 400
 
         base64_string = json_data['image']
         base64_length = len(base64_string)
-        logger.info(f"📊 [/scan-datamatrix-base64] {client_ip} - Base64 recibido: {base64_length} caracteres")
+        logger.info(
+            f"📊 [/scan-datamatrix-base64] {client_ip} - Base64 recibido: {base64_length} caracteres")
 
         # Remover prefijo data:image si existe
         if base64_string.startswith('data:image'):
             base64_string = base64_string.split(',')[1]
-            logger.info(f"🔧 [/scan-datamatrix-base64] {client_ip} - Removido prefijo data:image")
+            logger.info(
+                f"🔧 [/scan-datamatrix-base64] {client_ip} - Removido prefijo data:image")
 
         # Decodificar base64
         image_data = base64.b64decode(base64_string)
-        logger.info(f"🔓 [/scan-datamatrix-base64] {client_ip} - Base64 decodificado: {len(image_data)} bytes")
+        logger.info(
+            f"🔓 [/scan-datamatrix-base64] {client_ip} - Base64 decodificado: {len(image_data)} bytes")
 
         # Crear imagen desde bytes
         img = Image.open(io.BytesIO(image_data))
-        logger.info(f"🖼️  [/scan-datamatrix-base64] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
+        logger.info(
+            f"🖼️  [/scan-datamatrix-base64] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
 
         # Procesar DataMatrix
         start_time = datetime.now()
@@ -512,15 +594,19 @@ def scan_datamatrix_base64():
         processing_time = (datetime.now() - start_time).total_seconds()
 
         if datamatrix_text:
-            logger.info(f"✅ [/scan-datamatrix-base64] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            logger.info(
+                f"✅ [/scan-datamatrix-base64] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
             return jsonify({"text": datamatrix_text})
         else:
-            logger.warning(f"❌ [/scan-datamatrix-base64] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            logger.warning(
+                f"❌ [/scan-datamatrix-base64] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
             return jsonify({"error": "No se encontró código DataMatrix"}), 404
 
     except Exception as e:
-        processing_time = (datetime.now() - start_time).total_seconds() if 'start_time' in locals() else 0
-        logger.error(f"💥 [/scan-datamatrix-base64] {client_ip} - Error procesando en {processing_time:.2f}s: {str(e)}")
+        processing_time = (
+            datetime.now() - start_time).total_seconds() if 'start_time' in locals() else 0
+        logger.error(
+            f"💥 [/scan-datamatrix-base64] {client_ip} - Error procesando en {processing_time:.2f}s: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 
@@ -530,43 +616,51 @@ def scan_datamatrix_url():
     client_ip = request.environ.get('HTTP_X_REAL_IP', request.remote_addr)
     start_time = datetime.now()
     logger.info(f"📥 [/scan-datamatrix-url] Nueva petición desde {client_ip}")
-    
+
     try:
         data = request.get_json()
         if not data or 'url' not in data:
-            logger.warning(f"❌ [/scan-datamatrix-url] {client_ip} - Falta campo 'url' en JSON")
+            logger.warning(
+                f"❌ [/scan-datamatrix-url] {client_ip} - Falta campo 'url' en JSON")
             return jsonify({'error': 'Falta el campo "url" con la URL de la imagen'}), 400
-        
+
         image_url = data['url']
-        logger.info(f"🔗 [/scan-datamatrix-url] {client_ip} - Descargando desde: {image_url}")
-        
+        logger.info(
+            f"🔗 [/scan-datamatrix-url] {client_ip} - Descargando desde: {image_url}")
+
         # Descargar imagen
         response = requests.get(image_url, timeout=30)
         response.raise_for_status()
-        logger.info(f"📥 [/scan-datamatrix-url] {client_ip} - Imagen descargada: {len(response.content)} bytes")
-        
+        logger.info(
+            f"📥 [/scan-datamatrix-url] {client_ip} - Imagen descargada: {len(response.content)} bytes")
+
         # Convertir a imagen PIL desde bytes
         img = Image.open(io.BytesIO(response.content))
-        logger.info(f"🖼️  [/scan-datamatrix-url] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
-        
+        logger.info(
+            f"🖼️  [/scan-datamatrix-url] {client_ip} - Imagen creada: {img.size} píxeles, modo: {img.mode}")
+
         # Procesar DataMatrix
         datamatrix_text = decode_datamatrix(img)
         processing_time = (datetime.now() - start_time).total_seconds()
-        
+
         if datamatrix_text:
-            logger.info(f"✅ [/scan-datamatrix-url] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
+            logger.info(
+                f"✅ [/scan-datamatrix-url] {client_ip} - DataMatrix detectado en {processing_time:.2f}s: '{datamatrix_text}'")
             return jsonify({'text': datamatrix_text})
         else:
-            logger.warning(f"❌ [/scan-datamatrix-url] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
+            logger.warning(
+                f"❌ [/scan-datamatrix-url] {client_ip} - No se detectó DataMatrix después de {processing_time:.2f}s")
             return jsonify({'error': 'No se encontró código DataMatrix'}), 404
-            
+
     except requests.exceptions.RequestException as e:
         processing_time = (datetime.now() - start_time).total_seconds()
-        logger.error(f"💥 [/scan-datamatrix-url] {client_ip} - Error descargando imagen en {processing_time:.2f}s: {str(e)}")
+        logger.error(
+            f"💥 [/scan-datamatrix-url] {client_ip} - Error descargando imagen en {processing_time:.2f}s: {str(e)}")
         return jsonify({'error': f'Error descargando imagen: {str(e)}'}), 500
     except Exception as e:
         processing_time = (datetime.now() - start_time).total_seconds()
-        logger.error(f"💥 [/scan-datamatrix-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
+        logger.error(
+            f"💥 [/scan-datamatrix-url] {client_ip} - Error procesando URL en {processing_time:.2f}s: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 
